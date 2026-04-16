@@ -161,31 +161,41 @@ token_path.write_text(creds.to_json())
 
 ## Summary table
 
-| # | Risk | Severity | Fix in code? |
+| # | Risk | Severity | Status |
 |---|---|---|---|
-| 1 | Prompt injection via email content | High | Yes — delimiters + sanitization |
-| 2 | Gmail token exposure | High | Partial — chmod 600 on write |
-| 3 | Cleartext LAN transmission + data retention | Medium | Partial — INTERVAL fix; retention is config |
-| 4 | INTERVAL SQL parameterization | Low–Medium | Yes |
-| 5 | Log file exposure | Low | Recommendation only |
-| 6 | Unbounded sender/subject length | Low | Yes |
-| 7 | No LM Studio circuit breaker | Low | Recommendation only |
-| 8 | Token file world-readable on loose umask | Low | Yes |
+| 1 | Prompt injection via email content | High | **Fixed** — XML delimiters, closing instruction, control-char sanitization in `classifier.py` |
+| 2 | Gmail token exposure | High | **Fixed** — `chmod 0o600` on token write in `gmail_client.py:59` |
+| 3 | Cleartext LAN transmission + data retention | Medium | **Open** — LM Studio and PostgreSQL connections remain unencrypted; no retention policy |
+| 4 | INTERVAL SQL parameterization | Low–Medium | **Fixed** — `(%s * INTERVAL '1 hour')` typed bind in `db.py:99` |
+| 5 | Log file exposure | Low | **Open** — README documents `chmod 640`; not enforced in code |
+| 6 | Unbounded sender/subject length | Low | **Fixed** — sender capped at 200, subject at 300, snippet at 300 in `classifier.py:58–60` |
+| 7 | No LM Studio circuit breaker | Low | **Open** — accepted; no change planned unless downtime becomes frequent |
+| 8 | Token file world-readable on loose umask | Low | **Fixed** — see item 2 |
 
 ---
 
 ## Changes applied to the agent
 
-The following changes address items 1, 2, 4, 6, and 8 directly in the codebase.
+Items 1, 2, 4, 6, and 8 have been addressed in the codebase.
 
 ### classifier.py — prompt injection defense + input length limits
 
-Email fields are wrapped in XML-style delimiters so the model clearly distinguishes data from instructions. A closing instruction line reinforces the task after the content. Sender and subject are capped at 200 and 300 characters respectively.
+Email fields are wrapped in XML-style delimiters so the model clearly distinguishes data from instructions. A closing instruction line reinforces the task after the content block. `_sanitize()` strips C0 control characters and enforces per-field length caps (sender 200, subject 300, snippet 300).
 
 ### db.py — safe INTERVAL parameterization
 
-`INTERVAL '%s hours'` replaced with `(%s * INTERVAL '1 hour')` so the integer is bound as a typed parameter rather than embedded in a SQL string literal.
+`INTERVAL '%s hours'` replaced with `(%s * INTERVAL '1 hour')` so `lookback_hours` is bound as a typed integer parameter rather than embedded in a SQL string literal.
 
 ### gmail_client.py — restrictive token file permissions
 
-After writing `token.json`, permissions are explicitly set to `0o600` (owner read/write only).
+After writing `token.json`, `token_path.chmod(0o600)` is called explicitly so the file is always owner-read/write only regardless of process umask.
+
+---
+
+## Open items
+
+**Risk 3 — Cleartext LAN transmission**: LM Studio (`http://192.168.1.90:1234`) and PostgreSQL (`192.168.1.91:5434`) connections are unencrypted. Email metadata (sender, subject, snippet) transits the LAN in plaintext on every classification run. Add `sslmode=require` to psycopg2 params if the Postgres instance has TLS configured; accept LM Studio as LAN-trust risk or enable TLS there if supported. No data retention policy exists — consider a weekly cron to delete `processed_emails` rows older than 90 days.
+
+**Risk 5 — Log file permissions**: `/var/log/email-agent.log` may be world-readable depending on system defaults. README documents manual `chmod 640`; enforce it at log file creation (see README Logs section).
+
+**Risk 7 — LM Studio circuit breaker**: When LM Studio is unavailable, all unprocessed messages are retried every 10 minutes. No backoff or early-exit logic. Acceptable at current scale.

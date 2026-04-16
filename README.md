@@ -153,7 +153,36 @@ A 7–20B general-purpose instruct model is the sweet spot.
 
 ## Logs
 
+Both scripts write to stdout/stderr using Python's `logging` module (format: `YYYY-MM-DD HH:MM:SS LEVEL name — message`). The cron entries redirect that output to files in `/var/log/`.
+
+### Create log files
+
+The files must exist and be writable by your user before cron runs:
+
 ```bash
-tail -f /var/log/email-agent.log          # classifier
-tail -f /var/log/email-agent-digest.log   # digest
+sudo touch /var/log/email-agent.log /var/log/email-agent-digest.log
+sudo chown $USER:$USER /var/log/email-agent.log /var/log/email-agent-digest.log
 ```
+
+### View logs
+
+```bash
+tail -f /var/log/email-agent.log          # classifier (runs every 10 min)
+tail -f /var/log/email-agent-digest.log   # digest (runs every hour)
+```
+
+### Log rotation (optional)
+
+Create `/etc/logrotate.d/email-agent` to keep logs from growing unbounded:
+
+```
+/var/log/email-agent.log /var/log/email-agent-digest.log {
+    weekly
+    rotate 4
+    compress
+    missingok
+    notifempty
+}
+```
+
+This keeps 4 weeks of compressed history and silently skips missing files.
