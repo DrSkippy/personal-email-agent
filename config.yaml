@@ -1,0 +1,29 @@
+lm_studio:
+  base_url: "http://192.168.1.90:1234/v1"
+  model: "openai/gpt-oss-20b"
+  temperature: 0.1
+  max_tokens: 300
+
+gmail:
+  token_path: "~/.config/email-agent/token.json"
+  credentials_path: "~/.config/email-agent/credentials.json"
+  max_results: 50
+  user_id: "me"
+
+database:
+  host: "192.168.1.91"
+  port: 5434
+  user: "scott"
+  dbname: "email-agent"
+  # password loaded from POSTGRES_PASSWORD env var
+
+labels:
+  advertising: "Advertising"
+  bills_finance: "Bills-Finance"
+  friends_family: "Friends-Family"
+  ideas_tech: "Ideas-Tech"
+  news: "News"
+
+digest:
+  lookback_hours: 1
+  notify_timeout_ms: 10000

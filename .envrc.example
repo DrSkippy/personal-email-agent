@@ -1,0 +1,2 @@
+export LM_STUDIO_API_KEY=your-lm-studio-api-key
+export POSTGRES_PASSWORD=your-postgres-password
