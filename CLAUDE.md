@@ -63,6 +63,11 @@ poetry run python bin/setup_labels.py
 poetry run python bin/classify_emails.py
 ```
 
+**Manual draft replies:**
+```bash
+poetry run python bin/draft_replies.py
+```
+
 **Manual digest:**
 ```bash
 poetry run python bin/hourly_digest.py
@@ -71,6 +76,7 @@ poetry run python bin/hourly_digest.py
 **Cron configuration** (add via `crontab -e`):
 ```
 */10 * * * * /home/scott/Working/personal-email-agent/bin/cron_classify.sh >> /var/log/email-agent.log 2>&1
+*/10 * * * * /home/scott/Working/personal-email-agent/bin/cron_draft.sh >> /var/log/email-agent-draft.log 2>&1
 0 * * * *    /home/scott/Working/personal-email-agent/bin/cron_digest.sh >> /var/log/email-agent-digest.log 2>&1
 ```
 

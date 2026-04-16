@@ -106,6 +106,9 @@ poetry run python bin/classify_emails.py
 # Classify unread inbox messages now
 poetry run python bin/classify_emails.py
 
+# Draft replies to REPLY-REQUIRED emails now
+poetry run python bin/draft_replies.py
+
 # Send the attention digest now
 DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
   poetry run python bin/hourly_digest.py
@@ -120,6 +123,9 @@ Add both jobs via `crontab -e`:
 ```
 # Classify every 10 minutes
 */10 * * * * /home/scott/Working/personal-email-agent/bin/cron_classify.sh >> /var/log/email-agent.log 2>&1
+
+# Draft replies to REPLY-REQUIRED emails every 10 minutes
+*/10 * * * * /home/scott/Working/personal-email-agent/bin/cron_draft.sh >> /var/log/email-agent-draft.log 2>&1
 
 # Hourly attention digest
 0 * * * * /home/scott/Working/personal-email-agent/bin/cron_digest.sh >> /var/log/email-agent-digest.log 2>&1

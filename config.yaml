@@ -23,6 +23,13 @@ labels:
   friends_family: "Friends-Family"
   ideas_tech: "Ideas-Tech"
   news: "News"
+  reply_required: "REPLY-REQUIRED"
+  reply_drafted: "REPLY-DRAFTED"
+
+drafter:
+  model: "openai/gpt-oss-20b"
+  temperature: 0.4
+  max_tokens: 800
 
 digest:
   lookback_hours: 1
