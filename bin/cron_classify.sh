@@ -8,7 +8,4 @@ cd "$PROJ"
 # shellcheck source=../.envrc
 source "$PROJ/.envrc"
 
-# Ensure poetry is on PATH
-export PATH="/home/scott/.local/bin:$PATH"
-
-exec poetry run python bin/classify_emails.py
+exec "$PROJ/.venv/bin/python" bin/classify_emails.py
