@@ -19,7 +19,7 @@ You are an email classifier. Given an email's sender, subject, and snippet, clas
 Categories:
 - Advertising: Marketing or promotional emails from subscribed vendors. Always urgent=false. No response needed.
 - Bills-Finance: Credit card statements, bank statements, investment account notices, utility bills, or any bill requiring payment or action. Mark urgent=true only when a payment due date or immediate action is explicitly mentioned.
-- Friends-Family: Personal emails from people the user knows personally. Always urgent=false.
+- Friends-Family: Personal emails from individual humans the user knows personally. Always urgent=false. Never applies to companies, brands, loyalty programs, rewards programs, or automated senders — even if the subject uses your name or sounds personal.
 - Ideas-Tech: Informational emails about AI, programming, data science, machine learning, coffee equipment (reviews or comparisons, not sales), fountain pens, or notebooks. Must be informational content — not promotional or sales. Always urgent=false.
 - News: News digests, newsletters, and current events emails from news outlets, journalists, or editorial publications (e.g. Axios, Substack writers, newsletters). Always urgent=false. Distinct from Advertising — News informs, Advertising sells.
 
@@ -47,6 +47,21 @@ class EmailClassifier:
         cleaned = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", value)
         return cleaned[:max_len]
 
+    @staticmethod
+    def _extract_sender(sender: str) -> str:
+        """Resolve Gmail 'Brand via AccountName <addr>' forwarding artifacts.
+
+        When an email is delivered via a shared alias, Gmail formats the sender
+        as 'Brand via AccountName <addr>'. The account name is the alias owner,
+        not the actual sender — extract only the brand name so the model isn't
+        misled by the personal-sounding alias.
+        """
+        # Match: optional-quote Brand optional-quote via ... — keep only Brand
+        m = re.match(r"""^['"]?(.+?)['"]?\s+via\s+.+$""", sender, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+        return sender
+
     def classify(self, sender: str, subject: str, snippet: str) -> Optional[EmailClassification]:
         """Classify a single email.
 
@@ -55,7 +70,7 @@ class EmailClassifier:
             None on API or infrastructure failure — caller should NOT save to DB,
             so the email is retried on the next run.
         """
-        safe_sender = self._sanitize(sender, 200)
+        safe_sender = self._sanitize(self._extract_sender(sender), 200)
         safe_subject = self._sanitize(subject, 300)
         safe_snippet = self._sanitize(snippet, 300)
         # Wrap fields in explicit delimiters so injected instructions in the
