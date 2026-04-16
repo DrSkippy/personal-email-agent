@@ -70,11 +70,11 @@ poetry run python bin/hourly_digest.py
 
 **Cron configuration** (add via `crontab -e`):
 ```
-*/10 * * * * cd /home/scott/Working/personal-email-agent && poetry run python bin/classify_emails.py >> /var/log/email-agent.log 2>&1
-0 * * * *    cd /home/scott/Working/personal-email-agent && DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus poetry run python bin/hourly_digest.py >> /var/log/email-agent-digest.log 2>&1
+*/10 * * * * /home/scott/Working/personal-email-agent/bin/cron_classify.sh >> /var/log/email-agent.log 2>&1
+0 * * * *    /home/scott/Working/personal-email-agent/bin/cron_digest.sh >> /var/log/email-agent-digest.log 2>&1
 ```
 
-Note: `DISPLAY` and `DBUS_SESSION_BUS_ADDRESS` are required for `notify-send` from cron.
+The wrapper scripts source `.envrc` for secrets and add `~/.local/bin` to PATH for poetry. `DISPLAY` and `DBUS_SESSION_BUS_ADDRESS` are set inside `cron_digest.sh`.
 
 ## Configuration
 

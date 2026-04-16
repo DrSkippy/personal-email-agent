@@ -113,14 +113,22 @@ DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
 
 ## Cron setup
 
+Cron runs with a minimal `PATH` and no shell hooks, so `poetry` and the secrets from `.envrc` are not available by default. The wrapper scripts in `bin/` handle both: they source `.envrc` and prepend `~/.local/bin` before invoking poetry.
+
 Add both jobs via `crontab -e`:
 
 ```
 # Classify every 10 minutes
-*/10 * * * * cd /home/scott/Working/personal-email-agent && poetry run python bin/classify_emails.py >> /var/log/email-agent.log 2>&1
+*/10 * * * * /home/scott/Working/personal-email-agent/bin/cron_classify.sh >> /var/log/email-agent.log 2>&1
 
-# Hourly attention digest (DISPLAY required for notify-send)
-0 * * * * cd /home/scott/Working/personal-email-agent && DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus poetry run python bin/hourly_digest.py >> /var/log/email-agent-digest.log 2>&1
+# Hourly attention digest
+0 * * * * /home/scott/Working/personal-email-agent/bin/cron_digest.sh >> /var/log/email-agent-digest.log 2>&1
+```
+
+To test a wrapper script manually before adding to cron:
+
+```bash
+bash /home/scott/Working/personal-email-agent/bin/cron_classify.sh
 ```
 
 ## Project layout
