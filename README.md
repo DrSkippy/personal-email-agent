@@ -1,6 +1,6 @@
 # personal-email-agent
 
-A Gmail classification and organization agent. Polls your inbox every 10 minutes, uses a local LLM to classify each email into one of five categories, applies Gmail labels, and sends an hourly desktop notification summarizing anything that needs attention.
+A Gmail classification, organization, and reply-drafting agent. Polls your inbox every 10 minutes, uses a local LLM to classify each email into one of five categories, applies Gmail labels, drafts replies for emails you flag, and sends an hourly desktop notification summarizing anything that needs attention.
 
 ## What it does
 
@@ -8,21 +8,34 @@ A Gmail classification and organization agent. Polls your inbox every 10 minutes
 - Classifies each one using a local LLM (LM Studio, OpenAI-compatible)
 - Applies a Gmail label to categorized emails
 - Records every classification in PostgreSQL (avoids reprocessing)
+- Drafts replies for emails you label `REPLY-REQUIRED` and saves them to Gmail Drafts
 - Sends a `notify-send` desktop digest once per hour for urgent items
 
 ## Categories
 
 | Label | What it catches | Urgency |
 |---|---|---|
-| `Advertising` | Marketing, promotions, vendor newsletters | Non-urgent |
+| `Advertising` | Marketing, promotions, vendor newsletters, loyalty programs | Non-urgent |
 | `Bills-Finance` | Statements, bills, investment notices | Urgent if action/due date mentioned |
-| `Friends-Family` | Personal email from people you know | Not urgent |
+| `Friends-Family` | Personal email from individual humans you know | Not urgent |
 | `Ideas-Tech` | Informational AI, programming, data science, coffee, fountain pens | Not urgent |
 | `News` | News digests, editorial newsletters (Axios, Substack, etc.) | Non-urgent |
 
 Emails that don't clearly fit any category are left **unchanged and unread**.
 
 The hourly digest surfaces two things: urgent `Bills-Finance` and any `Friends-Family` email from the past hour.
+
+## Draft replies
+
+Label any unread email `REPLY-REQUIRED` in Gmail. Within 10 minutes the agent will:
+
+1. Fetch the full email body
+2. Ask the LLM to draft a reply that recaps the request and proposes a response with a timeline
+3. For complex requests, draft two labeled options (`--- Option A ---` / `--- Option B ---`) so you can delete whichever you don't want before sending
+4. Save the draft to Gmail Drafts, signed off as "Scott"
+5. Swap the label to `REPLY-DRAFTED` (email stays unread)
+
+The draft tone matches the incoming email — formal replies to formal email, casual to casual.
 
 ## Requirements
 
@@ -35,13 +48,27 @@ The hourly digest surfaces two things: urgent `Bills-Finance` and any `Friends-F
 
 ## Setup
 
-### 1. Install dependencies
+### 1. Configure Poetry to use an in-project virtualenv
+
+```bash
+poetry config virtualenvs.in-project true
+```
+
+This places the virtualenv at `.venv/` inside the project directory. The cron wrapper scripts rely on this path — run this once before `poetry install`.
+
+### 2. Install dependencies
 
 ```bash
 poetry install
 ```
 
-### 2. Configure secrets
+The virtualenv is created at `.venv/`. Verify with:
+
+```bash
+.venv/bin/python -c "import yaml; print('OK')"
+```
+
+### 3. Configure secrets
 
 ```bash
 cp .envrc.example .envrc
@@ -61,12 +88,17 @@ direnv allow
 # or: source .envrc
 ```
 
-### 3. Edit config.yaml
+### 4. Edit config.yaml
 
 ```yaml
 lm_studio:
   base_url: "http://<lm-studio-host>:1234/v1"
   model: "openai/gpt-oss-20b"   # any loaded model
+
+drafter:
+  model: "openai/gpt-oss-20b"   # can override to a larger model for drafting
+  temperature: 0.4
+  max_tokens: 800
 
 gmail:
   token_path: "~/.config/email-agent/token.json"
@@ -79,7 +111,7 @@ database:
   dbname: "email-agent"
 ```
 
-### 4. Gmail OAuth
+### 5. Gmail OAuth
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), enable the **Gmail API** for your project.
 2. Create an **OAuth 2.0 Client ID** (Desktop app type) and download `credentials.json`.
@@ -92,7 +124,7 @@ poetry run python bin/auth_gmail.py
 
 A browser window opens for the OAuth consent. The token is saved to `token_path` and auto-refreshes on subsequent runs.
 
-### 5. Create the database table
+### 6. Create the database table
 
 The table is created automatically on first run, but you can trigger it explicitly:
 
@@ -116,9 +148,9 @@ DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
 
 ## Cron setup
 
-Cron runs with a minimal `PATH` and no shell hooks, so `poetry` and the secrets from `.envrc` are not available by default. The wrapper scripts in `bin/` handle both: they source `.envrc` and prepend `~/.local/bin` before invoking poetry.
+Cron runs with a minimal `PATH` and no shell hooks, so `.envrc` secrets are not available by default. The wrapper scripts in `bin/cron_*.sh` source `.envrc` and invoke `.venv/bin/python` directly, bypassing any dependency on `poetry` being on the cron `PATH`.
 
-Add both jobs via `crontab -e`:
+Add all three jobs via `crontab -e`:
 
 ```
 # Classify every 10 minutes
@@ -131,7 +163,7 @@ Add both jobs via `crontab -e`:
 0 * * * * /home/scott/Working/personal-email-agent/bin/cron_digest.sh >> /var/log/email-agent-digest.log 2>&1
 ```
 
-To test a wrapper script manually before adding to cron:
+Test a wrapper script manually before adding to cron:
 
 ```bash
 bash /home/scott/Working/personal-email-agent/bin/cron_classify.sh
@@ -143,15 +175,21 @@ bash /home/scott/Working/personal-email-agent/bin/cron_classify.sh
 personal-email-agent/
 ├── bin/
 │   ├── auth_gmail.py         # One-time OAuth flow
-│   ├── classify_emails.py    # Main classifier (run every 10 min)
-│   ├── hourly_digest.py      # Attention digest (run every hour)
-│   └── setup_labels.py       # Pre-create Gmail labels (optional)
+│   ├── classify_emails.py    # Classifier (every 10 min)
+│   ├── draft_replies.py      # Reply drafter (every 10 min)
+│   ├── hourly_digest.py      # Attention digest (every hour)
+│   ├── setup_labels.py       # Pre-create Gmail labels (optional)
+│   ├── cron_classify.sh      # Cron wrapper for classifier
+│   ├── cron_draft.sh         # Cron wrapper for reply drafter
+│   └── cron_digest.sh        # Cron wrapper for digest
 ├── email_agent/
 │   ├── classifier.py         # LLM classification via LM Studio
+│   ├── drafter.py            # LLM reply drafting via LM Studio
 │   ├── db.py                 # PostgreSQL read/write
 │   ├── gmail_client.py       # Gmail API wrapper
 │   ├── models.py             # Pydantic schemas
 │   └── notifier.py           # notify-send digest builder
+├── .venv/                    # In-project virtualenv (not committed)
 ├── test/
 ├── config.yaml
 ├── .envrc                    # Secrets (not committed)
@@ -163,26 +201,27 @@ personal-email-agent/
 
 The classifier works best with a compact, instruction-following model. Non-thinking models are strongly preferred — thinking models (Qwen3, DeepSeek-R1, etc.) burn hundreds of reasoning tokens on a task that needs fewer than 100, causing context exhaustion on some emails.
 
-A 7–20B general-purpose instruct model is the sweet spot.
+A 7–20B general-purpose instruct model is the sweet spot for both classification and reply drafting. You can configure a separate (larger) model for drafting in the `drafter` section of `config.yaml` if the default produces weak drafts.
 
 ## Logs
 
-Both scripts write to stdout/stderr using Python's `logging` module (format: `YYYY-MM-DD HH:MM:SS LEVEL name — message`). The cron entries redirect that output to files in `/var/log/`.
+All scripts write to stdout/stderr using Python's `logging` module (format: `YYYY-MM-DD HH:MM:SS LEVEL name — message`). The cron entries redirect that output to files in `/var/log/`.
 
 ### Create log files
 
 The files must exist and be writable by your user before cron runs:
 
 ```bash
-sudo touch /var/log/email-agent.log /var/log/email-agent-digest.log
-sudo chown $USER:$USER /var/log/email-agent.log /var/log/email-agent-digest.log
+sudo touch /var/log/email-agent.log /var/log/email-agent-draft.log /var/log/email-agent-digest.log
+sudo chown $USER:$USER /var/log/email-agent.log /var/log/email-agent-draft.log /var/log/email-agent-digest.log
 ```
 
 ### View logs
 
 ```bash
-tail -f /var/log/email-agent.log          # classifier (runs every 10 min)
-tail -f /var/log/email-agent-digest.log   # digest (runs every hour)
+tail -f /var/log/email-agent.log          # classifier (every 10 min)
+tail -f /var/log/email-agent-draft.log    # reply drafter (every 10 min)
+tail -f /var/log/email-agent-digest.log   # digest (every hour)
 ```
 
 ### Log rotation (optional)
@@ -190,7 +229,7 @@ tail -f /var/log/email-agent-digest.log   # digest (runs every hour)
 Create `/etc/logrotate.d/email-agent` to keep logs from growing unbounded:
 
 ```
-/var/log/email-agent.log /var/log/email-agent-digest.log {
+/var/log/email-agent.log /var/log/email-agent-draft.log /var/log/email-agent-digest.log {
     weekly
     rotate 4
     compress
